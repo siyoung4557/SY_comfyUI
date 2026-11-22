@@ -546,9 +546,26 @@ app.registerExtension({
         };
 
         // 워크플로를 불러온 뒤 화면을 위젯 값에 맞춤
+        // 예전 버전으로 저장된 노드의 출력 단자 정리
+        // (출력 구성이 바뀐 뒤 옛 워크플로를 열면 단자가 중복되거나 남는 경우가 있음)
+        // 지금 정의에 없는 이름 / 같은 이름이 두 번째로 나온 단자 중, 연결선이 없는 것만 지움
+        const expectedOutputs = nodeData.output_name || nodeData.output || [];
+        const cleanOutputs = (node) => {
+            if (!node.outputs || !expectedOutputs.length) return;
+            for (let i = node.outputs.length - 1; i >= 0; i--) {
+                const o = node.outputs[i];
+                const firstIdx = node.outputs.findIndex((x) => x.name === o.name);
+                const unknown = !expectedOutputs.includes(o.name);
+                const duplicate = firstIdx !== i;
+                const linked = Array.isArray(o.links) && o.links.length > 0;
+                if ((unknown || duplicate) && !linked) node.removeOutput(i);
+            }
+        };
+
         const origConfigure = nodeType.prototype.onConfigure;
         nodeType.prototype.onConfigure = function () {
             const r = origConfigure?.apply(this, arguments);
+            try { cleanOutputs(this); } catch (e) { console.warn("[SYPromptList] output cleanup", e); }
             const m = this.widgets?.find((x) => x.type === WIDGET_TYPE);
             m?.__syRefresh?.();
             m?.__sySyncWidth?.();
