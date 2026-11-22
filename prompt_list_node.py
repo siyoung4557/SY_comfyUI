@@ -1,5 +1,5 @@
 # SY Prompt List — 여러 개의 (title, prompt) 세트를 한 노드에서 관리하고
-# 그중 하나를 골라 "<title>  prompt" 문자열(t & p)로 출력합니다.
+# 그중 하나를 골라 title / prompt / "<title>  prompt"(t & p) 문자열로 출력합니다.
 #
 # 화면(목록, ⋮ 메뉴, Add/Edit 창, index, fixed/randomize)은 js/prompt_list.js가 그리고,
 # 세트 목록은 "prompt_data"라는 하나의 JSON 문자열로 이 파이썬 코드에 전달됩니다.
@@ -107,14 +107,6 @@ def combine(title, prompt):
     return f"<{title}>  {prompt}"
 
 
-def as_lists(items):
-    """title_list / prompt_list 출력용.
-    세트가 하나도 없으면 [""] (빈 목록을 내보내면 연결된 다음 노드가 오류를 낼 수 있어서)"""
-    if not items:
-        return [""], [""]
-    return [it["title"] for it in items], [it["prompt"] for it in items]
-
-
 def pick(items, index, mode, rng=random):
     """출력할 세트 번호를 고릅니다. 세트가 없으면 -1."""
     if not items:
@@ -147,9 +139,7 @@ class SYPromptList:
     INPUT_IS_LIST = True
 
     RETURN_TYPES = ("STRING", "STRING", "STRING")
-    RETURN_NAMES = ("t & p", "title_list", "prompt_list")
-    # 뒤의 두 개는 "목록" 출력 (모든 세트의 title / prompt를 순서대로)
-    OUTPUT_IS_LIST = (False, True, True)
+    RETURN_NAMES = ("title", "prompt", "t & p")
     FUNCTION = "run"
     CATEGORY = "SY"
 
@@ -168,10 +158,10 @@ class SYPromptList:
         new_items = build_import(title_list, prompt_list)
         if new_items:
             first_item = new_items[0]
-            tl, pl = as_lists(new_items)
             return {
                 "ui": {"sy_import": new_items, "sy_index": [0]},
-                "result": (combine(first_item["title"], first_item["prompt"]), tl, pl),
+                "result": (first_item["title"], first_item["prompt"],
+                           combine(first_item["title"], first_item["prompt"])),
             }
 
         items, _, _ = parse_data(prompt_data)
@@ -182,8 +172,7 @@ class SYPromptList:
         mode = first(mode) if first(mode) in ("fixed", "randomize") else "fixed"
         i = pick(items, index, mode)
         if i < 0:
-            return {"ui": {"sy_index": [-1]}, "result": ("", [""], [""])}
+            return {"ui": {"sy_index": [-1]}, "result": ("", "", "")}
         it = items[i]
         # ui의 sy_index: 실제로 출력된 세트 번호를 화면에 알려줌 (randomize 결과 표시용)
-        tl, pl = as_lists(items)
-        return {"ui": {"sy_index": [i]}, "result": (combine(it["title"], it["prompt"]), tl, pl)}
+        return {"ui": {"sy_index": [i]}, "result": (it["title"], it["prompt"], combine(it["title"], it["prompt"]))}
