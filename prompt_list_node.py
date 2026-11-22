@@ -50,12 +50,11 @@ def first(v):
     return v
 
 
-def to_prompt_list(values):
-    """다른 노드에서 받은 값을 prompt 문자열 목록으로 바꿉니다.
-    - 여러 개가 리스트로 들어오면: 하나하나가 prompt
-    - 한 덩어리 글자인데 JSON 배열이면: 배열의 각 항목이 prompt
-    - 그 밖의 한 덩어리 글자: 통째로 prompt 1개
-    빈 글자는 버립니다."""
+def to_text_list(values):
+    """다른 노드에서 받은 값을 글자 목록으로 바꿉니다. (빈 칸도 자리를 유지)
+    - 여러 개가 리스트로 들어오면: 하나하나가 항목
+    - 한 덩어리 글자인데 JSON 배열이면: 배열의 각 항목
+    - 그 밖의 한 덩어리 글자: 통째로 항목 1개"""
     if values is None:
         return []
     if not isinstance(values, list):
@@ -81,13 +80,26 @@ def to_prompt_list(values):
     out = []
     for v in flat:
         if v is None:
-            continue
-        if isinstance(v, dict):  # {"prompt": "..."} 같은 모양도 허용
-            v = v.get("prompt", v.get("text", ""))
-        t = str(v)
-        if t.strip():
-            out.append(t)
+            v = ""
+        elif isinstance(v, dict):  # {"prompt": "..."} 같은 모양도 허용
+            v = v.get("prompt", v.get("text", v.get("title", "")))
+        out.append(str(v))
     return out
+
+
+def build_import(title_list, prompt_list):
+    """title 목록과 prompt 목록을 같은 순서끼리 짝지어 세트 목록을 만듭니다.
+    - prompt가 빈 세트는 버림
+    - title이 없거나 비어 있으면 'Prompt N' (N = 최종 목록에서의 순서)"""
+    titles = to_text_list(title_list)
+    prompts = to_text_list(prompt_list)
+    pairs = []
+    for i, p in enumerate(prompts):
+        if not p.strip():
+            continue
+        t = titles[i].strip() if i < len(titles) else ""
+        pairs.append((t, p))
+    return [{"title": t or f"Prompt {n + 1}", "prompt": p} for n, (t, p) in enumerate(pairs)]
 
 
 def pick(items, index, mode, rng=random):
@@ -111,8 +123,9 @@ class SYPromptList:
                 "mode": (["fixed", "randomize"], {"default": "fixed"}),
             },
             "optional": {
-                # 다른 노드의 prompt 목록을 받아 목록을 통째로 바꿔 넣는 입력 (가져오기용)
+                # 다른 노드의 title / prompt 목록을 받아 목록을 통째로 바꿔 넣는 입력 (가져오기용)
                 # "*" = 어떤 형식이든 연결 가능
+                "title_list": ("*", {"forceInput": True}),
                 "prompt_list": ("*", {"forceInput": True}),
             },
         }
@@ -126,20 +139,19 @@ class SYPromptList:
     CATEGORY = "SY"
 
     @classmethod
-    def IS_CHANGED(cls, prompt_data, index=None, mode=None, prompt_list=None):
+    def IS_CHANGED(cls, prompt_data, index=None, mode=None, title_list=None, prompt_list=None):
         # randomize일 때는 매번 새로 뽑도록 "항상 바뀌었다"고 알려줌
         # (NaN은 자기 자신과도 같지 않아서 ComfyUI가 항상 다시 실행합니다)
         if first(mode) == "randomize":
             return float("nan")
         return f"{first(prompt_data)}|{first(index)}"
 
-    def run(self, prompt_data, index=None, mode=None, prompt_list=None):
+    def run(self, prompt_data, index=None, mode=None, title_list=None, prompt_list=None):
         prompt_data = first(prompt_data)
 
         # ── 가져오기: 연결된 입력에 prompt가 들어오면 목록을 통째로 교체하고 0번을 출력
-        imported = to_prompt_list(prompt_list)
-        if imported:
-            new_items = [{"title": f"Prompt {i + 1}", "prompt": p} for i, p in enumerate(imported)]
+        new_items = build_import(title_list, prompt_list)
+        if new_items:
             first_item = new_items[0]
             return {
                 "ui": {"sy_import": new_items, "sy_index": [0]},

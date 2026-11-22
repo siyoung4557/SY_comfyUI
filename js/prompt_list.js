@@ -12,8 +12,8 @@ const WIDGET_TYPE = "SY_PROMPT_LIST";
 
 // ───────────────────────── 스타일 ─────────────────────────
 const CSS = `
-.sy-pl-root { display:flex; flex-direction:column; gap:6px; width:100%; min-width:100%; max-width:none; height:100%;
-  flex:1 1 100%; align-self:stretch;
+.sy-pl-root { display:flex; flex-direction:column; gap:6px; width:100%; max-width:none; height:100%;
+  flex:1 1 auto; align-self:stretch;
   box-sizing:border-box; padding:4px 2px; font-family:sans-serif; font-size:12px;
   color:var(--input-text, #ddd); }
 .sy-pl-list { flex:1 1 auto; min-height:0; width:100%; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
@@ -334,7 +334,18 @@ function createPromptListWidget(node, inputName) {
         act(() => { state.index = i; });
     };
 
+    // 노드 가로 크기를 직접 따라가게 함 (ComfyUI 버전에 따라 자동으로 안 늘어나는 경우 대비)
+    let lastW = -1;
+    widget.__sySyncWidth = () => {
+        const margin = typeof widget.margin === "number" ? widget.margin : 10;
+        const w = Math.max(120, Math.round(node.size[0] - margin * 2));
+        if (w === lastW) return;
+        lastW = w;
+        root.style.width = w + "px";
+    };
+
     render();
+    widget.__sySyncWidth();
     return widget;
 }
 
@@ -373,6 +384,7 @@ app.registerExtension({
             hook("index", () => main?.__syOnIndexChanged?.());
             hook("mode", () => main?.__syOnModeChanged?.());
             main?.__syRefresh?.();
+            main?.__sySyncWidth?.();
             return r;
         };
 
@@ -384,11 +396,28 @@ app.registerExtension({
             w?.__syShowPicked?.(message?.sy_index?.[0]);
         };
 
+        // 노드 크기가 바뀌면 안쪽 화면 너비도 맞춤
+        const mainOf = (n) => n.widgets?.find((x) => x.type === WIDGET_TYPE);
+        const origResize = nodeType.prototype.onResize;
+        nodeType.prototype.onResize = function () {
+            const r = origResize?.apply(this, arguments);
+            mainOf(this)?.__sySyncWidth?.();
+            return r;
+        };
+        const origFg = nodeType.prototype.onDrawForeground;
+        nodeType.prototype.onDrawForeground = function () {
+            const r = origFg?.apply(this, arguments);
+            mainOf(this)?.__sySyncWidth?.(); // 바뀐 게 없으면 아무것도 안 함
+            return r;
+        };
+
         // 워크플로를 불러온 뒤 화면을 위젯 값에 맞춤
         const origConfigure = nodeType.prototype.onConfigure;
         nodeType.prototype.onConfigure = function () {
             const r = origConfigure?.apply(this, arguments);
-            this.widgets?.find((x) => x.type === WIDGET_TYPE)?.__syRefresh?.();
+            const m = this.widgets?.find((x) => x.type === WIDGET_TYPE);
+            m?.__syRefresh?.();
+            m?.__sySyncWidth?.();
             return r;
         };
 
