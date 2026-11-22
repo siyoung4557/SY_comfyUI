@@ -107,6 +107,14 @@ def combine(title, prompt):
     return f"<{title}>  {prompt}"
 
 
+def as_lists(items):
+    """title_list / prompt_list 출력용.
+    세트가 하나도 없으면 [""] (빈 목록을 내보내면 연결된 다음 노드가 오류를 낼 수 있어서)"""
+    if not items:
+        return [""], [""]
+    return [it["title"] for it in items], [it["prompt"] for it in items]
+
+
 def pick(items, index, mode, rng=random):
     """출력할 세트 번호를 고릅니다. 세트가 없으면 -1."""
     if not items:
@@ -138,8 +146,10 @@ class SYPromptList:
     # 다른 노드가 목록으로 내보내도 한 번에 전부 받기 위해 필요
     INPUT_IS_LIST = True
 
-    RETURN_TYPES = ("STRING", "STRING", "STRING")
-    RETURN_NAMES = ("title", "prompt", "t & p")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("title", "prompt", "t & p", "title_list", "prompt_list")
+    # 뒤의 두 개는 "목록" 출력 (모든 세트의 title / prompt를 순서대로)
+    OUTPUT_IS_LIST = (False, False, False, True, True)
     FUNCTION = "run"
     CATEGORY = "SY"
 
@@ -158,10 +168,11 @@ class SYPromptList:
         new_items = build_import(title_list, prompt_list)
         if new_items:
             first_item = new_items[0]
+            tl, pl = as_lists(new_items)
             return {
                 "ui": {"sy_import": new_items, "sy_index": [0]},
                 "result": (first_item["title"], first_item["prompt"],
-                           combine(first_item["title"], first_item["prompt"])),
+                           combine(first_item["title"], first_item["prompt"]), tl, pl),
             }
 
         items, _, _ = parse_data(prompt_data)
@@ -172,7 +183,8 @@ class SYPromptList:
         mode = first(mode) if first(mode) in ("fixed", "randomize") else "fixed"
         i = pick(items, index, mode)
         if i < 0:
-            return {"ui": {"sy_index": [-1]}, "result": ("", "", "")}
+            return {"ui": {"sy_index": [-1]}, "result": ("", "", "", [""], [""])}
         it = items[i]
         # ui의 sy_index: 실제로 출력된 세트 번호를 화면에 알려줌 (randomize 결과 표시용)
-        return {"ui": {"sy_index": [i]}, "result": (it["title"], it["prompt"], combine(it["title"], it["prompt"]))}
+        tl, pl = as_lists(items)
+        return {"ui": {"sy_index": [i]}, "result": (it["title"], it["prompt"], combine(it["title"], it["prompt"]), tl, pl)}

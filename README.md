@@ -29,6 +29,7 @@ Preview Image 노드의 제목줄 오른쪽 위에 **Save** 버튼이 있습니�
 - **편집 창 크기 조절**: 창 오른쪽 아래 모서리를 끌면 크기가 바뀌고 Prompt 입력칸도 함께 커집니다.
 - **🔍 검색**(제목줄 오른쪽 위, 또는 우클릭 → Search...): 검색어와 같은 부분을 title·prompt에서 파란색으로 표시 (대소문자 구분 안 함). Clear 또는 빈 검색어로 해제. 검색 중에는 돋보기가 파란색.
 - 출력: `title`, `prompt`, `t & p`(`<title>  prompt` 형태로 합친 글자) — 모두 STRING. 세트가 하나도 없으면 빈 문자열을 출력합니다.
+- 목록 출력: `title_list`, `prompt_list` — 모든 세트를 순서대로 담은 목록. 세트가 없으면 빈 글자 1개(`[""]`).
 
 ### 다른 노드에서 가져오기 (title_list / prompt_list 입력)
 1. 다른 노드의 title 목록 → `title_list`, prompt 목록 → `prompt_list`에 연결 (title_list는 없어도 됨)
