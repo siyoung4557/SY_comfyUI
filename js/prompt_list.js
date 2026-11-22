@@ -60,6 +60,12 @@ const CSS = `
   color:var(--input-text, #ddd); background:var(--comfy-input-bg, #1e1e1e); border:1px solid var(--border-color, #555);
   font-family:inherit; font-size:13px; }
 .sy-pl-dialog textarea { min-height:220px; resize:vertical; }
+/* 편집 창: 오른쪽 아래 모서리를 끌어 크기 조절, Prompt 칸이 남는 공간을 채움 */
+.sy-pl-dialog.resizable { resize:both; overflow:hidden; min-width:320px; min-height:300px;
+  max-width:96vw; max-height:96vh; }
+.sy-pl-dialog.resizable textarea { flex:1 1 220px; min-height:120px; resize:none; }
+.sy-pl-hit { color:#60a5fa; font-weight:bold; }
+.sy-pl-search-row { display:flex; gap:8px; }
 .sy-pl-foot { display:flex; justify-content:flex-end; gap:8px; }
 .sy-pl-btn { padding:7px 16px; border-radius:6px; cursor:pointer; color:inherit;
   border:1px solid var(--border-color, #555); background:transparent; }
@@ -127,9 +133,9 @@ function showMenu(anchor, entries) {
 }
 
 // 공통 창 틀. 바깥 클릭으로는 닫히지 않음 (X / Cancel / Esc로만 닫힘)
-function openDialog({ title, small }) {
+function openDialog({ title, small, resizable }) {
     const overlay = el("div", "sy-pl-overlay");
-    const box = el("div", "sy-pl-dialog" + (small ? " small" : ""));
+    const box = el("div", "sy-pl-dialog" + (small ? " small" : "") + (resizable ? " resizable" : ""));
     const head = el("div", "sy-pl-dhead");
     head.appendChild(el("h3", "", title));
     const x = el("button", "sy-pl-x", "✕");
@@ -151,7 +157,7 @@ function openDialog({ title, small }) {
 
 // Add / Edit 창: 처음 값에서 하나라도 바뀌면 Save 활성화
 function openEditor({ heading, title, prompt, onSave }) {
-    const { box, close } = openDialog({ title: heading });
+    const { box, close } = openDialog({ title: heading, resizable: true });
     const origTitle = title ?? "", origPrompt = prompt ?? "";
 
     box.appendChild(el("label", "", "Title"));
@@ -199,12 +205,49 @@ function openConfirmDelete(onDelete) {
     setTimeout(() => cancel.focus(), 0);
 }
 
+// 검색 창: Search(또는 Enter) → 검색어 적용, Clear → 검색 해제
+function openSearch(current, onApply) {
+    const { box, close } = openDialog({ title: "Search", small: true });
+    const input = el("input");
+    input.type = "text";
+    input.value = current || "";
+    input.placeholder = "검색어 (대소문자 구분 안 함)";
+    box.appendChild(input);
+    const foot = el("div", "sy-pl-foot");
+    const clear = el("button", "sy-pl-btn", "Clear");
+    const go = el("button", "sy-pl-btn primary", "Search");
+    foot.append(clear, go);
+    box.appendChild(foot);
+    const apply = (term) => { onApply(term.trim()); close(); };
+    go.addEventListener("click", () => apply(input.value));
+    clear.addEventListener("click", () => apply(""));
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") apply(input.value); });
+    setTimeout(() => { input.focus(); input.select(); }, 0);
+}
+
+// 글자 안에서 검색어와 같은 부분을 파란색으로 (대소문자 구분 안 함)
+function fillHighlighted(target, text, term) {
+    target.replaceChildren();
+    if (!term) { target.textContent = text; return; }
+    const lower = text.toLowerCase(), t = term.toLowerCase();
+    let pos = 0;
+    while (true) {
+        const hit = lower.indexOf(t, pos);
+        if (hit < 0) break;
+        if (hit > pos) target.appendChild(document.createTextNode(text.slice(pos, hit)));
+        target.appendChild(el("span", "sy-pl-hit", text.slice(hit, hit + t.length)));
+        pos = hit + t.length;
+    }
+    if (pos < text.length) target.appendChild(document.createTextNode(text.slice(pos)));
+}
+
 // ───────────────────────── 노드 안 화면 ─────────────────────────
 let radioGroupSeq = 0;
 
 function createPromptListWidget(node, inputName) {
     injectCSS();
     let state = L.emptyState();
+    let searchTerm = ""; // 임시 (워크플로에 저장되지 않음)
     const group = "sy-pl-radio-" + (++radioGroupSeq);
 
     const root = el("div", "sy-pl-root");
@@ -269,7 +312,8 @@ function createPromptListWidget(node, inputName) {
 
             const card = el("div", "sy-pl-card");
             const head = el("div", "sy-pl-head");
-            const title = el("div", "sy-pl-title", it.title);
+            const title = el("div", "sy-pl-title");
+            fillHighlighted(title, it.title, searchTerm);
             title.title = it.title;
             const kebab = el("button", "sy-pl-kebab", "⋮");
             kebab.title = "Menu";
@@ -287,7 +331,8 @@ function createPromptListWidget(node, inputName) {
             });
             head.append(title, kebab);
 
-            const body = el("div", "sy-pl-body", it.prompt);
+            const body = el("div", "sy-pl-body");
+            fillHighlighted(body, it.prompt, searchTerm);
             card.append(head, body);
             row.append(side, card);
             list.appendChild(row);
@@ -318,6 +363,15 @@ function createPromptListWidget(node, inputName) {
     widget.__syOnModeChanged = () => act(() => {});
     widget.__syRefresh = () => { pull(); push(); render(); };
 
+    // 검색
+    widget.__syIsSearching = () => searchTerm.length > 0;
+    widget.__syOpenSearch = () => openSearch(searchTerm, (term) => {
+        searchTerm = term;
+        render();
+        node.setDirtyCanvas?.(true, true); // 돋보기 색 갱신
+        app.graph?.setDirtyCanvas?.(true, true);
+    });
+
     // 가져오기: 다른 노드에서 받은 목록으로 통째로 교체하고 0번 선택
     widget.__syImport = (items) => {
         if (!Array.isArray(items) || items.length === 0) return;
@@ -347,6 +401,34 @@ function createPromptListWidget(node, inputName) {
     render();
     widget.__sySyncWidth();
     return widget;
+}
+
+// ───────────────────────── 제목줄 돋보기 버튼 ─────────────────────────
+const BTN_SIZE = 22, BTN_MARGIN = 8;
+function titleHeight() {
+    return (window.LiteGraph && window.LiteGraph.NODE_TITLE_HEIGHT) || 30;
+}
+function searchBtnRect(node) {
+    const th = titleHeight();
+    return [node.size[0] - BTN_SIZE - BTN_MARGIN, -th + (th - BTN_SIZE) / 2, BTN_SIZE, BTN_SIZE];
+}
+function drawSearchBtn(ctx, node, active) {
+    const [x, y, w, h] = searchBtnRect(node);
+    ctx.save();
+    ctx.fillStyle = active ? "#3b82f6" : "rgba(255,255,255,0.08)";
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, w, h, 4); else ctx.rect(x, y, w, h);
+    ctx.fill();
+    // 돋보기: 동그라미 + 손잡이
+    ctx.strokeStyle = active ? "#fff" : "#ccc";
+    ctx.lineWidth = 1.8;
+    const cx = x + w * 0.44, cy = y + h * 0.44, r = w * 0.22;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + r * 0.72, cy + r * 0.72);
+    ctx.lineTo(x + w * 0.78, y + h * 0.78);
+    ctx.stroke();
+    ctx.restore();
 }
 
 // ───────────────────────── 등록 ─────────────────────────
@@ -405,9 +487,34 @@ app.registerExtension({
             return r;
         };
         const origFg = nodeType.prototype.onDrawForeground;
-        nodeType.prototype.onDrawForeground = function () {
+        nodeType.prototype.onDrawForeground = function (ctx) {
             const r = origFg?.apply(this, arguments);
-            mainOf(this)?.__sySyncWidth?.(); // 바뀐 게 없으면 아무것도 안 함
+            const m = mainOf(this);
+            m?.__sySyncWidth?.(); // 바뀐 게 없으면 아무것도 안 함
+            if (ctx && !(this.flags && this.flags.collapsed)) {
+                drawSearchBtn(ctx, this, !!m?.__syIsSearching?.());
+            }
+            return r;
+        };
+
+        // 돋보기 클릭
+        const origDown = nodeType.prototype.onMouseDown;
+        nodeType.prototype.onMouseDown = function (e, pos) {
+            if (!(this.flags && this.flags.collapsed) && pos) {
+                const [x, y, w, h] = searchBtnRect(this);
+                if (pos[0] >= x && pos[0] <= x + w && pos[1] >= y && pos[1] <= y + h) {
+                    mainOf(this)?.__syOpenSearch?.();
+                    return true;
+                }
+            }
+            return origDown?.apply(this, arguments);
+        };
+
+        // 예비 수단: 우클릭 메뉴
+        const origMenu = nodeType.prototype.getExtraMenuOptions;
+        nodeType.prototype.getExtraMenuOptions = function (canvas, options) {
+            const r = origMenu?.apply(this, arguments);
+            options.unshift({ content: "🔍 Search...", callback: () => mainOf(this)?.__syOpenSearch?.() });
             return r;
         };
 
