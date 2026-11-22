@@ -7,7 +7,7 @@ Preview Image 노드의 제목줄 오른쪽 위에 **Save** 버튼을 추가한 
 ## 설치
 ```
 cd ComfyUI/custom_nodes
-git clone <이 저장소 주소>
+git clone https://github.com/siyoung4557/SY_comfyUI.git
 ```
 ComfyUI를 다시 시작하고 `SY Preview Image`를 검색하세요. (카테고리: SY)
 
