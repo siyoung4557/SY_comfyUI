@@ -72,3 +72,10 @@ export function select(s, i, fromRadio = false) {
     if (fromRadio) s.mode = "fixed";
     return clampIndex(s);
 }
+
+// 가져오기: 목록을 통째로 교체하고 0번 선택 (mode는 그대로 유지)
+export function replaceAll(s, items) {
+    const n = normalize({ items, index: 0, mode: s.mode });
+    n.items = n.items.map((it, i) => ({ title: autoTitle(it.title, i), prompt: it.prompt }));
+    return n;
+}

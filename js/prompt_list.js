@@ -315,6 +315,13 @@ function createPromptListWidget(node, inputName) {
         hideOnZoom: false,
     });
 
+    // 가져오기: 다른 노드에서 받은 목록으로 통째로 교체하고 0번 선택
+    widget.__syImport = (items) => {
+        if (!Array.isArray(items) || items.length === 0) return;
+        state = L.replaceAll(state, items);
+        changed();
+    };
+
     // randomize 결과(실제로 출력된 번호)를 화면에 반영
     widget.__syShowPicked = (i) => {
         if (typeof i !== "number" || i < 0 || i >= state.items.length) return;
@@ -352,9 +359,9 @@ app.registerExtension({
         const origExecuted = nodeType.prototype.onExecuted;
         nodeType.prototype.onExecuted = function (message) {
             origExecuted?.apply(this, arguments);
-            const picked = message?.sy_index?.[0];
             const w = this.widgets?.find((x) => x.type === WIDGET_TYPE);
-            w?.__syShowPicked?.(picked);
+            if (message?.sy_import) w?.__syImport?.(message.sy_import);
+            w?.__syShowPicked?.(message?.sy_index?.[0]);
         };
 
         const origRemoved = nodeType.prototype.onRemoved;
