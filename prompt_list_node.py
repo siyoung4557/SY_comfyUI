@@ -102,6 +102,11 @@ def build_import(title_list, prompt_list):
     return [{"title": t or f"Prompt {n + 1}", "prompt": p} for n, (t, p) in enumerate(pairs)]
 
 
+def combine(title, prompt):
+    """t & p 출력용: <title>  prompt"""
+    return f"<{title}>  {prompt}"
+
+
 def pick(items, index, mode, rng=random):
     """출력할 세트 번호를 고릅니다. 세트가 없으면 -1."""
     if not items:
@@ -133,8 +138,8 @@ class SYPromptList:
     # 다른 노드가 목록으로 내보내도 한 번에 전부 받기 위해 필요
     INPUT_IS_LIST = True
 
-    RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("title", "prompt")
+    RETURN_TYPES = ("STRING", "STRING", "STRING")
+    RETURN_NAMES = ("title", "prompt", "t & p")
     FUNCTION = "run"
     CATEGORY = "SY"
 
@@ -155,7 +160,8 @@ class SYPromptList:
             first_item = new_items[0]
             return {
                 "ui": {"sy_import": new_items, "sy_index": [0]},
-                "result": (first_item["title"], first_item["prompt"]),
+                "result": (first_item["title"], first_item["prompt"],
+                           combine(first_item["title"], first_item["prompt"])),
             }
 
         items, _, _ = parse_data(prompt_data)
@@ -166,7 +172,7 @@ class SYPromptList:
         mode = first(mode) if first(mode) in ("fixed", "randomize") else "fixed"
         i = pick(items, index, mode)
         if i < 0:
-            return {"ui": {"sy_index": [-1]}, "result": ("", "")}
+            return {"ui": {"sy_index": [-1]}, "result": ("", "", "")}
         it = items[i]
         # ui의 sy_index: 실제로 출력된 세트 번호를 화면에 알려줌 (randomize 결과 표시용)
-        return {"ui": {"sy_index": [i]}, "result": (it["title"], it["prompt"])}
+        return {"ui": {"sy_index": [i]}, "result": (it["title"], it["prompt"], combine(it["title"], it["prompt"]))}

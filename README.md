@@ -26,7 +26,7 @@ Preview Image 노드의 제목줄 오른쪽 위에 **Save** 버튼이 있습니�
 - **라디오 버튼 / index(0부터)**: 출력할 세트 선택. 선택하면 mode가 fixed로 바뀝니다.
 - **mode**: `fixed` = 선택한 세트 출력, `randomize` = 실행할 때마다 무작위 세트 출력(뽑힌 번호가 화면에 표시됨)
 - title을 비워두면 `Prompt N`으로 자동 이름이 붙습니다.
-- 출력: `title`, `prompt` (STRING). 세트가 하나도 없으면 빈 문자열을 출력합니다.
+- 출력: `title`, `prompt`, `t & p`(`<title>  prompt` 형태로 합친 글자) — 모두 STRING. 세트가 하나도 없으면 빈 문자열을 출력합니다.
 
 ### 다른 노드에서 가져오기 (title_list / prompt_list 입력)
 1. 다른 노드의 title 목록 → `title_list`, prompt 목록 → `prompt_list`에 연결 (title_list는 없어도 됨)
