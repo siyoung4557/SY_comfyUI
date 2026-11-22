@@ -1,5 +1,5 @@
 # SY Prompt List — 여러 개의 (title, prompt) 세트를 한 노드에서 관리하고
-# 그중 하나를 골라 title / prompt / "<title>  prompt"(t & p) 문자열로 출력합니다.
+# 그중 하나를 골라 prompt / "<title>  prompt"(t & p) 문자열로 출력합니다.
 #
 # 화면(목록, ⋮ 메뉴, Add/Edit 창, index, fixed/randomize)은 js/prompt_list.js가 그리고,
 # 세트 목록은 "prompt_data"라는 하나의 JSON 문자열로 이 파이썬 코드에 전달됩니다.
@@ -138,8 +138,8 @@ class SYPromptList:
     # 다른 노드가 목록으로 내보내도 한 번에 전부 받기 위해 필요
     INPUT_IS_LIST = True
 
-    RETURN_TYPES = ("STRING", "STRING", "STRING")
-    RETURN_NAMES = ("title", "prompt", "t & p")
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("prompt", "t & p")
     FUNCTION = "run"
     CATEGORY = "SY"
 
@@ -160,8 +160,7 @@ class SYPromptList:
             first_item = new_items[0]
             return {
                 "ui": {"sy_import": new_items, "sy_index": [0]},
-                "result": (first_item["title"], first_item["prompt"],
-                           combine(first_item["title"], first_item["prompt"])),
+                "result": (first_item["prompt"], combine(first_item["title"], first_item["prompt"])),
             }
 
         items, _, _ = parse_data(prompt_data)
@@ -172,7 +171,7 @@ class SYPromptList:
         mode = first(mode) if first(mode) in ("fixed", "randomize") else "fixed"
         i = pick(items, index, mode)
         if i < 0:
-            return {"ui": {"sy_index": [-1]}, "result": ("", "", "")}
+            return {"ui": {"sy_index": [-1]}, "result": ("", "")}
         it = items[i]
         # ui의 sy_index: 실제로 출력된 세트 번호를 화면에 알려줌 (randomize 결과 표시용)
-        return {"ui": {"sy_index": [i]}, "result": (it["title"], it["prompt"], combine(it["title"], it["prompt"]))}
+        return {"ui": {"sy_index": [i]}, "result": (it["prompt"], combine(it["title"], it["prompt"]))}
