@@ -19,7 +19,7 @@ const CSS = `
 .sy-pl-list { flex:1 1 auto; min-height:0; width:100%; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
 .sy-pl-empty { flex:1; white-space:pre-line; display:flex; align-items:center; justify-content:center; opacity:.55;
   border:1px dashed var(--border-color, #555); border-radius:6px; padding:12px; text-align:center; }
-.sy-pl-item { flex:1 1 0; min-height:72px; width:100%; box-sizing:border-box; display:flex; gap:6px; align-items:stretch; }
+.sy-pl-item { flex:0 0 auto; width:100%; box-sizing:border-box; display:flex; gap:6px; align-items:stretch; }
 .sy-pl-side { flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:2px; padding-top:6px; width:22px; }
 .sy-pl-radio { margin:0; cursor:pointer; accent-color:#3b82f6; }
 .sy-pl-num { font-size:10px; opacity:.7; font-variant-numeric:tabular-nums; }
@@ -337,7 +337,34 @@ function createPromptListWidget(node, inputName) {
             row.append(side, card);
             list.appendChild(row);
         });
+        layout();
     }
+
+    // 내용 양에 맞춰 세트 높이 나누기 (짧은 세트는 필요한 만큼만, 남는 공간은 긴 세트들이 나눔)
+    function layout() {
+        const rows = [...list.querySelectorAll(".sy-pl-item")];
+        if (rows.length === 0 || list.clientHeight === 0) return;
+        // 1) 제한 없이 그렸을 때의 높이 재기
+        rows.forEach((r) => { r.style.flex = "0 0 auto"; r.style.height = "auto"; });
+        const natural = rows.map((r) => Math.ceil(r.offsetHeight));
+        // 2) 쓸 수 있는 높이 = 목록 높이 - 세트 사이 간격
+        const gap = parseFloat(getComputedStyle(list).rowGap) || 0;
+        const total = list.clientHeight - gap * (rows.length - 1);
+        // 3) 나눠서 적용
+        const heights = L.allocateHeights(natural, total, 72);
+        rows.forEach((r, i) => { r.style.flex = `0 0 ${heights[i]}px`; r.style.height = heights[i] + "px"; });
+    }
+
+    // 노드 크기가 바뀌면 다시 나누기
+    let rafId = 0, lastSize = "";
+    const ro = new ResizeObserver(() => {
+        const size = list.clientWidth + "x" + list.clientHeight;
+        if (size === lastSize) return; // 크기가 그대로면 아무것도 안 함 (무한 반복 방지)
+        lastSize = size;
+        cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(layout);
+    });
+    ro.observe(list);
 
     addBtn.addEventListener("click", () => openEditor({
         heading: "Add Prompt", title: "", prompt: "",

@@ -79,3 +79,24 @@ export function replaceAll(s, items) {
     n.items = n.items.map((it, i) => ({ title: autoTitle(it.title, i), prompt: it.prompt }));
     return n;
 }
+
+// 높이 나누기: 내용이 짧은 세트는 필요한 만큼만, 남은 공간은 내용이 긴 세트들이 똑같이 나눠 가짐
+// natural: 각 세트가 내용을 다 보여줄 때의 높이, total: 쓸 수 있는 전체 높이, minH: 긴 세트의 최소 높이
+export function allocateHeights(natural, total, minH = 72) {
+    const n = natural.length;
+    const res = new Array(n);
+    const order = [...natural.keys()].sort((a, b) => natural[a] - natural[b]);
+    let remaining = total, left = n;
+    for (const i of order) {
+        const share = remaining / left;
+        if (natural[i] > share) break;
+        res[i] = natural[i];
+        remaining -= natural[i];
+        left -= 1;
+    }
+    if (left > 0) {
+        const share = Math.max(minH, Math.floor(remaining / left));
+        for (const i of order) if (res[i] === undefined) res[i] = Math.min(natural[i], share);
+    }
+    return res;
+}
