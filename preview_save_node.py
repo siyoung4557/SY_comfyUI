@@ -15,7 +15,7 @@ from PIL.PngImagePlugin import PngInfo
 import folder_paths
 
 
-class PreviewImageWithSave:
+class SYPreviewImage:
     def __init__(self):
         self.output_dir = folder_paths.get_temp_directory()
         self.type = "temp"
@@ -41,7 +41,7 @@ class PreviewImageWithSave:
     RETURN_NAMES = ("images",)
     FUNCTION = "run"
     OUTPUT_NODE = True
-    CATEGORY = "image/custom"
+    CATEGORY = "SY"
 
     def run(self, images, prompt=None, extra_pnginfo=None):
         full_output_folder, filename, counter, subfolder, _ = folder_paths.get_save_image_path(

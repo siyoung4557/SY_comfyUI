@@ -1,12 +1,13 @@
 // 브라우저(화면) 쪽 역할:
 //  1) 노드 제목줄 오른쪽 위에 [Save] 버튼을 그림
 //  2) 버튼을 누르면 '다른 이름으로 저장' 창을 띄워서 원하는 폴더에 PNG 저장
+//     (마지막으로 저장한 폴더를 기억해서 다음엔 그 폴더에서 창이 열림)
 //  3) 혹시 제목줄 버튼이 안 눌리는 버전을 대비해, 노드 우클릭 메뉴에도 같은 기능 추가
 
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
-const NODE_NAME = "PreviewImageWithSave";
+const NODE_NAME = "SYPreviewImage";
 
 // 버튼 모양 설정 (원하면 숫자만 바꿔서 조정하세요)
 const BTN_W = 52;          // 버튼 너비
@@ -41,6 +42,66 @@ function makeSuggestedName() {
     return `ComfyUI_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.png`;
 }
 
+// ── 마지막 저장 위치 기억하기 ─────────────────────────────
+// 브라우저 안의 작은 저장소(IndexedDB)에 "마지막으로 저장한 파일"을 기억해 두고,
+// 다음 저장 창을 그 파일이 있던 폴더에서 열게 합니다.
+// (ComfyUI를 껐다 켜도, 브라우저를 새로고침해도 유지됩니다)
+const PICKER_ID = "sy-preview-image";   // 브라우저가 폴더를 기억할 때 쓰는 이름표
+const DB_NAME = "sy-preview-image";
+const STORE = "handles";
+const KEY = "lastSavedFile";
+
+function openDB() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function loadLastHandle() {
+    try {
+        const db = await openDB();
+        return await new Promise((resolve) => {
+            const req = db.transaction(STORE, "readonly").objectStore(STORE).get(KEY);
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = () => resolve(null);
+        });
+    } catch {
+        return null;
+    }
+}
+
+async function saveLastHandle(handle) {
+    try {
+        const db = await openDB();
+        db.transaction(STORE, "readwrite").objectStore(STORE).put(handle, KEY);
+    } catch (err) {
+        console.warn("[SYPreviewImage] 마지막 위치 기억 실패", err);
+    }
+}
+
+async function openSavePicker(suggestedName) {
+    const base = {
+        id: PICKER_ID,
+        suggestedName,
+        types: [{ description: "PNG Image", accept: { "image/png": [".png"] } }],
+    };
+    const last = await loadLastHandle();
+    if (last) {
+        try {
+            // 마지막으로 저장한 파일이 있던 폴더에서 시작
+            return await window.showSaveFilePicker({ ...base, startIn: last });
+        } catch (err) {
+            if (err && err.name === "AbortError") throw err; // 사용자가 취소
+            // 그 폴더가 지워졌거나 이동된 경우 → 아래에서 기본 방식으로 다시 열기
+        }
+    }
+    return await window.showSaveFilePicker(base);
+}
+// ─────────────────────────────────────────────────────────
+
 async function fetchImageBlob(info) {
     const params = new URLSearchParams({
         filename: info.filename,
@@ -66,13 +127,10 @@ async function saveImageAs(node) {
         let handle;
         try {
             // 저장 창을 먼저 띄웁니다 (클릭 직후에 띄워야 브라우저가 허용함)
-            handle = await window.showSaveFilePicker({
-                suggestedName,
-                types: [{ description: "PNG Image", accept: { "image/png": [".png"] } }],
-            });
+            handle = await openSavePicker(suggestedName);
         } catch (err) {
             if (err && err.name === "AbortError") return; // 사용자가 '취소' 누름
-            console.error("[PreviewImageWithSave]", err);
+            console.error("[SYPreviewImage]", err);
             alert("저장 창을 열 수 없습니다: " + err.message);
             return;
         }
@@ -81,8 +139,9 @@ async function saveImageAs(node) {
             const writable = await handle.createWritable();
             await writable.write(blob);
             await writable.close();
+            await saveLastHandle(handle); // 이번 저장 위치를 기억
         } catch (err) {
-            console.error("[PreviewImageWithSave]", err);
+            console.error("[SYPreviewImage]", err);
             alert("저장 중 오류가 났습니다: " + err.message);
         }
         return;
@@ -100,13 +159,13 @@ async function saveImageAs(node) {
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
-        console.error("[PreviewImageWithSave]", err);
+        console.error("[SYPreviewImage]", err);
         alert("다운로드 중 오류가 났습니다: " + err.message);
     }
 }
 
 app.registerExtension({
-    name: "custom.PreviewImageWithSave",
+    name: "SY.PreviewImage",
 
     async beforeRegisterNodeDef(nodeType, nodeData) {
         if (nodeData.name !== NODE_NAME) return;
