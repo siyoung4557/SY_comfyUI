@@ -12,14 +12,18 @@ const WIDGET_TYPE = "SY_PROMPT_LIST";
 
 // ───────────────────────── 스타일 ─────────────────────────
 const CSS = `
-.sy-pl-root { display:flex; flex-direction:column; gap:6px; width:100%; height:100%;
+.sy-pl-root { display:flex; flex-direction:column; gap:6px; width:100%; min-width:100%; max-width:none; height:100%;
+  flex:1 1 100%; align-self:stretch;
   box-sizing:border-box; padding:4px 2px; font-family:sans-serif; font-size:12px;
   color:var(--input-text, #ddd); }
-.sy-pl-list { flex:1 1 auto; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
+.sy-pl-list { flex:1 1 auto; min-height:0; width:100%; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
 .sy-pl-empty { flex:1; white-space:pre-line; display:flex; align-items:center; justify-content:center; opacity:.55;
   border:1px dashed var(--border-color, #555); border-radius:6px; padding:12px; text-align:center; }
-.sy-pl-item { flex:1 1 0; min-height:72px; display:flex; gap:6px; align-items:stretch; }
-.sy-pl-radio { flex:0 0 auto; margin:8px 0 0 0; cursor:pointer; accent-color:#3b82f6; }
+.sy-pl-item { flex:1 1 0; min-height:72px; width:100%; box-sizing:border-box; display:flex; gap:6px; align-items:stretch; }
+.sy-pl-side { flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:2px; padding-top:6px; width:22px; }
+.sy-pl-radio { margin:0; cursor:pointer; accent-color:#3b82f6; }
+.sy-pl-num { font-size:10px; opacity:.7; font-variant-numeric:tabular-nums; }
+.sy-pl-item.selected .sy-pl-num { color:#3b82f6; opacity:1; font-weight:bold; }
 .sy-pl-card { flex:1; min-width:0; display:flex; flex-direction:column;
   background:var(--comfy-input-bg, #222); border:1px solid var(--border-color, #444); border-radius:6px; }
 .sy-pl-item.selected .sy-pl-card { border-color:#3b82f6; box-shadow:0 0 0 1px #3b82f6 inset; }
@@ -30,19 +34,9 @@ const CSS = `
   cursor:pointer; border-radius:4px; font-size:16px; line-height:1; }
 .sy-pl-kebab:hover { background:rgba(255,255,255,.1); }
 .sy-pl-body { flex:1; min-height:0; overflow-y:auto; padding:6px 8px; white-space:pre-wrap; word-break:break-word; opacity:.9; }
-.sy-pl-add { flex:0 0 auto; padding:6px; cursor:pointer; border-radius:6px; color:inherit;
+.sy-pl-add { flex:0 0 auto; width:100%; box-sizing:border-box; padding:6px; cursor:pointer; border-radius:6px; color:inherit;
   background:var(--comfy-input-bg, #222); border:1px dashed var(--border-color, #555); }
 .sy-pl-add:hover { border-color:#3b82f6; }
-.sy-pl-row { flex:0 0 auto; display:flex; align-items:center; gap:6px; }
-.sy-pl-label { width:44px; opacity:.75; }
-.sy-pl-arrow { width:26px; height:24px; cursor:pointer; border-radius:4px; color:inherit;
-  background:var(--comfy-input-bg, #222); border:1px solid var(--border-color, #444); }
-.sy-pl-index { flex:1; min-width:0; height:24px; text-align:center; box-sizing:border-box; color:inherit;
-  background:var(--comfy-input-bg, #222); border:1px solid var(--border-color, #444); border-radius:4px; }
-.sy-pl-seg { flex:1; display:flex; border:1px solid var(--border-color, #444); border-radius:4px; overflow:hidden; }
-.sy-pl-seg button { flex:1; height:24px; border:none; cursor:pointer; color:inherit; background:var(--comfy-input-bg, #222); }
-.sy-pl-seg button.on { background:#3b82f6; color:#fff; }
-.sy-pl-root button:disabled, .sy-pl-root input:disabled { opacity:.4; cursor:default; }
 
 .sy-pl-menu { position:fixed; z-index:10001; min-width:120px; padding:4px; border-radius:6px;
   background:var(--comfy-menu-bg, #2b2b2b); border:1px solid var(--border-color, #555);
@@ -216,28 +210,37 @@ function createPromptListWidget(node, inputName) {
     const root = el("div", "sy-pl-root");
     const list = el("div", "sy-pl-list");
     const addBtn = el("button", "sy-pl-add", "+ Add Prompt");
-
-    const idxRow = el("div", "sy-pl-row");
-    const prev = el("button", "sy-pl-arrow", "◀");
-    const idxInput = el("input", "sy-pl-index");
-    idxInput.type = "number";
-    idxInput.min = "0";
-    const next = el("button", "sy-pl-arrow", "▶");
-    idxRow.append(el("span", "sy-pl-label", "index"), prev, idxInput, next);
-
-    const modeRow = el("div", "sy-pl-row");
-    const seg = el("div", "sy-pl-seg");
-    const bFixed = el("button", "", "fixed");
-    const bRandom = el("button", "", "randomize");
-    seg.append(bFixed, bRandom);
-    modeRow.append(el("span", "sy-pl-label", "mode"), seg);
-
-    root.append(list, addBtn, idxRow, modeRow);
+    root.append(list, addBtn);
     keepWheelInside(root);
-    // 노드 안의 키 입력(index 숫자 입력 등)이 ComfyUI 단축키로 넘어가지 않게
     root.addEventListener("keydown", (e) => e.stopPropagation());
 
-    const changed = () => {
+    // index / mode는 ComfyUI 기본 위젯 (파이썬 INPUT_TYPES에서 만들어짐)
+    const idxW = () => node.widgets?.find((w) => w.name === "index");
+    const modeW = () => node.widgets?.find((w) => w.name === "mode");
+
+    // 위젯 값 → state
+    function pull() {
+        const iw = idxW(), mw = modeW();
+        if (iw) state.index = Number(iw.value) || 0;
+        if (mw) state.mode = mw.value === "randomize" ? "randomize" : "fixed";
+        L.clampIndex(state);
+    }
+    // state → 위젯 값
+    function push() {
+        const iw = idxW(), mw = modeW();
+        if (iw) {
+            iw.value = state.index;
+            if (iw.options) iw.options.max = Math.max(0, state.items.length - 1);
+        }
+        if (mw) mw.value = state.mode;
+    }
+
+    // 목록을 바꾸는 모든 동작은 이 함수를 거침
+    const act = (fn) => {
+        pull();
+        fn();
+        L.clampIndex(state);
+        push();
         render();
         node.setDirtyCanvas?.(true, true);
         app.graph?.setDirtyCanvas?.(true, true);
@@ -254,79 +257,81 @@ function createPromptListWidget(node, inputName) {
         state.items.forEach((it, i) => {
             const row = el("div", "sy-pl-item" + (i === state.index ? " selected" : ""));
 
+            // 라디오 + 그 아래 번호(00, 01, …)
+            const side = el("div", "sy-pl-side");
             const radio = el("input", "sy-pl-radio");
             radio.type = "radio";
             radio.name = group;
             radio.checked = i === state.index;
-            radio.addEventListener("change", () => { L.select(state, i, true); changed(); });
+            radio.addEventListener("change", () => act(() => L.select(state, i, true)));
+            const num = el("div", "sy-pl-num", String(i).padStart(2, "0"));
+            side.append(radio, num);
 
             const card = el("div", "sy-pl-card");
             const head = el("div", "sy-pl-head");
             const title = el("div", "sy-pl-title", it.title);
-            title.title = it.title; // 마우스를 올리면 전체 제목 표시
+            title.title = it.title;
             const kebab = el("button", "sy-pl-kebab", "⋮");
             kebab.title = "Menu";
             kebab.addEventListener("click", (e) => {
                 e.stopPropagation();
                 const entries = [{ label: "Edit", action: () => openEditor({
                     heading: "Edit Prompt", title: it.title, prompt: it.prompt,
-                    onSave: (t, p) => { L.editItem(state, i, t, p); changed(); },
+                    onSave: (t, p) => act(() => L.editItem(state, i, t, p)),
                 }) }];
-                if (i > 0) entries.push({ label: "▲", action: () => { L.moveItem(state, i, -1); changed(); } });
-                if (i < n - 1) entries.push({ label: "▼", action: () => { L.moveItem(state, i, +1); changed(); } });
-                entries.push({ label: "Delete", danger: true, action: () => openConfirmDelete(() => { L.deleteItem(state, i); changed(); }) });
+                if (i > 0) entries.push({ label: "▲", action: () => act(() => L.moveItem(state, i, -1)) });
+                if (i < n - 1) entries.push({ label: "▼", action: () => act(() => L.moveItem(state, i, +1)) });
+                entries.push({ label: "Delete", danger: true,
+                    action: () => openConfirmDelete(() => act(() => L.deleteItem(state, i))) });
                 showMenu(kebab, entries);
             });
             head.append(title, kebab);
 
             const body = el("div", "sy-pl-body", it.prompt);
             card.append(head, body);
-            row.append(radio, card);
+            row.append(side, card);
             list.appendChild(row);
         });
-
-        idxInput.value = String(state.index);
-        idxInput.max = String(Math.max(0, n - 1));
-        idxInput.disabled = n === 0;
-        prev.disabled = n === 0 || state.index <= 0;
-        next.disabled = n === 0 || state.index >= n - 1;
-
-        bFixed.classList.toggle("on", state.mode === "fixed");
-        bRandom.classList.toggle("on", state.mode === "randomize");
     }
 
     addBtn.addEventListener("click", () => openEditor({
         heading: "Add Prompt", title: "", prompt: "",
-        onSave: (t, p) => { L.addItem(state, t, p); changed(); },
+        onSave: (t, p) => act(() => L.addItem(state, t, p)),
     }));
-    prev.addEventListener("click", () => { L.select(state, state.index - 1, true); changed(); });
-    next.addEventListener("click", () => { L.select(state, state.index + 1, true); changed(); });
-    idxInput.addEventListener("change", () => {
-        L.select(state, Number.parseInt(idxInput.value, 10) || 0, true);
-        changed();
-    });
-    bFixed.addEventListener("click", () => { state.mode = "fixed"; changed(); });
-    bRandom.addEventListener("click", () => { state.mode = "randomize"; changed(); });
 
     const widget = node.addDOMWidget(inputName, WIDGET_TYPE, root, {
-        getValue: () => JSON.stringify(state),
-        setValue: (v) => { state = L.normalize(v); render(); },
-        getMinHeight: () => 260,
+        // 세트 목록만 저장 (index/mode는 기본 위젯이 저장)
+        getValue: () => JSON.stringify({ items: state.items }),
+        setValue: (v) => {
+            state.items = L.normalize(v).items;
+            pull();
+            render();
+        },
+        getMinHeight: () => 220,
         hideOnZoom: false,
     });
+
+    // index / mode 기본 위젯을 사용자가 바꿨을 때
+    widget.__syOnIndexChanged = () => act(() => {
+        if (state.mode === "randomize") state.mode = "fixed"; // 직접 골랐으면 fixed로
+    });
+    widget.__syOnModeChanged = () => act(() => {});
+    widget.__syRefresh = () => { pull(); push(); render(); };
 
     // 가져오기: 다른 노드에서 받은 목록으로 통째로 교체하고 0번 선택
     widget.__syImport = (items) => {
         if (!Array.isArray(items) || items.length === 0) return;
-        state = L.replaceAll(state, items);
-        changed();
+        act(() => {
+            const r = L.replaceAll(state, items);
+            state.items = r.items;
+            state.index = 0;
+        });
     };
 
-    // randomize 결과(실제로 출력된 번호)를 화면에 반영
+    // 실제로 출력된 번호(randomize 결과)를 화면에 반영 — mode는 바꾸지 않음
     widget.__syShowPicked = (i) => {
         if (typeof i !== "number" || i < 0 || i >= state.items.length) return;
-        state.index = i;
-        changed();
+        act(() => { state.index = i; });
     };
 
     render();
@@ -340,7 +345,7 @@ app.registerExtension({
     getCustomWidgets() {
         return {
             [WIDGET_TYPE](node, inputName) {
-                return { widget: createPromptListWidget(node, inputName), minWidth: 320, minHeight: 300 };
+                return { widget: createPromptListWidget(node, inputName) };
             },
         };
     },
@@ -352,7 +357,22 @@ app.registerExtension({
         nodeType.prototype.onNodeCreated = function () {
             const r = origCreated?.apply(this, arguments);
             // 처음 만들 때 넉넉한 크기 (워크플로를 불러올 때는 저장된 크기가 우선)
-            this.setSize([Math.max(this.size[0], 420), Math.max(this.size[1], 480)]);
+            this.setSize([Math.max(this.size[0], 420), Math.max(this.size[1], 520)]);
+
+            const main = this.widgets?.find((x) => x.type === WIDGET_TYPE);
+            const hook = (name, fn) => {
+                const w = this.widgets?.find((x) => x.name === name);
+                if (!w) return;
+                const orig = w.callback;
+                w.callback = function () {
+                    const res = orig?.apply(this, arguments);
+                    fn();
+                    return res;
+                };
+            };
+            hook("index", () => main?.__syOnIndexChanged?.());
+            hook("mode", () => main?.__syOnModeChanged?.());
+            main?.__syRefresh?.();
             return r;
         };
 
@@ -362,6 +382,14 @@ app.registerExtension({
             const w = this.widgets?.find((x) => x.type === WIDGET_TYPE);
             if (message?.sy_import) w?.__syImport?.(message.sy_import);
             w?.__syShowPicked?.(message?.sy_index?.[0]);
+        };
+
+        // 워크플로를 불러온 뒤 화면을 위젯 값에 맞춤
+        const origConfigure = nodeType.prototype.onConfigure;
+        nodeType.prototype.onConfigure = function () {
+            const r = origConfigure?.apply(this, arguments);
+            this.widgets?.find((x) => x.type === WIDGET_TYPE)?.__syRefresh?.();
+            return r;
         };
 
         const origRemoved = nodeType.prototype.onRemoved;

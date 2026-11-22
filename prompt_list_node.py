@@ -2,14 +2,13 @@
 # 그중 하나를 골라 title / prompt 문자열로 출력합니다.
 #
 # 화면(목록, ⋮ 메뉴, Add/Edit 창, index, fixed/randomize)은 js/prompt_list.js가 그리고,
-# 화면에서 만든 데이터는 "prompt_data"라는 하나의 JSON 문자열로 이 파이썬 코드에 전달됩니다.
+# 세트 목록은 "prompt_data"라는 하나의 JSON 문자열로 이 파이썬 코드에 전달됩니다.
 #
 # prompt_data 모양 예시:
 # {
 #   "items": [ {"title": "고양이", "prompt": "a cute cat"}, ... ],
-#   "index": 0,            # 0부터 시작
-#   "mode": "fixed"        # "fixed" 또는 "randomize"
 # }
+# index(0부터)와 mode(fixed/randomize)는 ComfyUI 기본 위젯으로 따로 들어옵니다.
 
 import json
 import random
@@ -107,6 +106,9 @@ class SYPromptList:
             "required": {
                 # SY_PROMPT_LIST: js/prompt_list.js가 만드는 전용 화면(위젯)
                 "prompt_data": ("SY_PROMPT_LIST", {"default": DEFAULT_DATA}),
+                # ComfyUI 기본 위젯 모양(◀ index 0 ▶ / ◀ mode fixed ▶)을 그대로 사용
+                "index": ("INT", {"default": 0, "min": 0, "max": 99999, "step": 1}),
+                "mode": (["fixed", "randomize"], {"default": "fixed"}),
             },
             "optional": {
                 # 다른 노드의 prompt 목록을 받아 목록을 통째로 바꿔 넣는 입력 (가져오기용)
@@ -124,16 +126,14 @@ class SYPromptList:
     CATEGORY = "SY"
 
     @classmethod
-    def IS_CHANGED(cls, prompt_data, prompt_list=None):
+    def IS_CHANGED(cls, prompt_data, index=None, mode=None, prompt_list=None):
         # randomize일 때는 매번 새로 뽑도록 "항상 바뀌었다"고 알려줌
         # (NaN은 자기 자신과도 같지 않아서 ComfyUI가 항상 다시 실행합니다)
-        prompt_data = first(prompt_data)
-        _, _, mode = parse_data(prompt_data)
-        if mode == "randomize":
+        if first(mode) == "randomize":
             return float("nan")
-        return prompt_data
+        return f"{first(prompt_data)}|{first(index)}"
 
-    def run(self, prompt_data, prompt_list=None):
+    def run(self, prompt_data, index=None, mode=None, prompt_list=None):
         prompt_data = first(prompt_data)
 
         # ── 가져오기: 연결된 입력에 prompt가 들어오면 목록을 통째로 교체하고 0번을 출력
@@ -146,7 +146,12 @@ class SYPromptList:
                 "result": (first_item["title"], first_item["prompt"]),
             }
 
-        items, index, mode = parse_data(prompt_data)
+        items, _, _ = parse_data(prompt_data)
+        try:
+            index = int(first(index) or 0)
+        except Exception:
+            index = 0
+        mode = first(mode) if first(mode) in ("fixed", "randomize") else "fixed"
         i = pick(items, index, mode)
         if i < 0:
             return {"ui": {"sy_index": [-1]}, "result": ("", "")}
