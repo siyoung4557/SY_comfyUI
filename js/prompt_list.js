@@ -17,21 +17,20 @@ const CSS = `
   box-sizing:border-box; padding:4px 2px; font-family:sans-serif; font-size:12px;
   color:var(--input-text, #ddd); }
 .sy-pl-list { flex:1 1 auto; min-height:0; width:100%; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
-.sy-pl-empty { flex:1; white-space:pre-line; display:flex; align-items:center; justify-content:center; opacity:.55;
-  border:1px dashed var(--border-color, #555); border-radius:6px; padding:12px; text-align:center; }
+.sy-pl-empty { flex:1; white-space:pre-line; display:flex; align-items:center; justify-content:center; color:#d1d5db;
+  background:rgba(0,0,0,.45); border:1px dashed rgba(255,255,255,.3); border-radius:6px; padding:12px; text-align:center; }
 .sy-pl-item { flex:0 0 auto; width:100%; box-sizing:border-box; display:flex; gap:6px; align-items:stretch; }
-.sy-pl-side { flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:2px; padding-top:6px; width:22px; }
+.sy-pl-side { flex:0 0 auto; align-self:flex-start; display:flex; flex-direction:column; align-items:center; gap:3px;
+  padding:6px 0 7px; width:24px; border-radius:6px; background:rgba(0,0,0,.6); border:1px solid rgba(255,255,255,.12); }
 .sy-pl-radio { margin:0; cursor:pointer; accent-color:#3b82f6; }
-.sy-pl-num { font-size:10px; opacity:.7; font-variant-numeric:tabular-nums; }
-.sy-pl-item.selected .sy-pl-num { color:#3b82f6; opacity:1; font-weight:bold; }
-/* 랜덤 후보 체크 (randomize 모드에서만 의미 있음 → fixed일 때는 흐리게) */
-.sy-pl-pick { width:14px; height:14px; margin-top:4px; padding:0; box-sizing:border-box; cursor:pointer;
-  border-radius:4px; border:1.5px solid var(--border-color, #666); background:transparent;
-  color:#fff; font-size:10px; line-height:11px; font-weight:bold; text-align:center; }
-.sy-pl-pick:hover { border-color:#3b82f6; }
-.sy-pl-pick.on { background:#3b82f6; border-color:#3b82f6; }
-.sy-pl-root.mode-fixed .sy-pl-pick { opacity:.3; }
-.sy-pl-root.mode-fixed .sy-pl-pick:hover { opacity:.6; }
+.sy-pl-num { font-size:10px; color:#d1d5db; font-variant-numeric:tabular-nums; }
+.sy-pl-item.selected .sy-pl-num { color:#60a5fa; font-weight:bold; }
+/* 랜덤 후보 체크 (randomize일 때만 결과에 영향, fixed에서도 똑같이 보이고 선택 가능) */
+.sy-pl-pick { width:15px; height:15px; margin-top:3px; padding:0; box-sizing:border-box; cursor:pointer;
+  border-radius:4px; border:1.5px solid rgba(255,255,255,.7); background:#151515;
+  color:#fff; font-size:11px; line-height:12px; font-weight:bold; text-align:center; }
+.sy-pl-pick:hover { border-color:#60a5fa; }
+.sy-pl-pick.on { background:#3b82f6; border-color:#93c5fd; }
 .sy-pl-card { flex:1; min-width:0; display:flex; flex-direction:column;
   background:var(--comfy-input-bg, #222); border:1px solid var(--border-color, #444); border-radius:6px; }
 .sy-pl-item.selected .sy-pl-card { border-color:#3b82f6; box-shadow:0 0 0 1px #3b82f6 inset; }
@@ -43,14 +42,13 @@ const CSS = `
 .sy-pl-kebab:hover { background:rgba(255,255,255,.1); }
 .sy-pl-body { flex:1; min-height:0; overflow-y:auto; padding:6px 8px; white-space:pre-wrap; word-break:break-word; opacity:.9; }
 .sy-pl-addrow { flex:0 0 auto; display:flex; gap:6px; width:100%; }
-.sy-pl-bulk { flex:0 0 auto; padding:6px 10px; cursor:pointer; border-radius:6px; color:inherit; font-size:12px;
-  background:var(--comfy-input-bg, #222); border:1px solid var(--border-color, #555); white-space:nowrap; }
-.sy-pl-bulk:hover { border-color:#3b82f6; }
-.sy-pl-bulk:disabled { opacity:.35; cursor:default; border-color:var(--border-color, #555); }
-.sy-pl-root.mode-fixed .sy-pl-bulk:not(:disabled) { opacity:.5; }
-.sy-pl-add { flex:1 1 auto; min-width:0; box-sizing:border-box; padding:6px; cursor:pointer; border-radius:6px; color:inherit;
-  background:var(--comfy-input-bg, #222); border:1px dashed var(--border-color, #555); }
-.sy-pl-add:hover { border-color:#3b82f6; }
+.sy-pl-bulk { flex:0 0 auto; padding:6px 10px; cursor:pointer; border-radius:6px; color:#e5e7eb; font-size:12px;
+  background:rgba(0,0,0,.65); border:1px solid rgba(255,255,255,.3); white-space:nowrap; }
+.sy-pl-bulk:hover { border-color:#60a5fa; }
+.sy-pl-bulk:disabled { color:rgba(229,231,235,.4); border-color:rgba(255,255,255,.12); cursor:default; }
+.sy-pl-add { flex:1 1 auto; min-width:0; box-sizing:border-box; padding:6px; cursor:pointer; border-radius:6px; color:#e5e7eb;
+  background:rgba(0,0,0,.65); border:1px dashed rgba(255,255,255,.35); }
+.sy-pl-add:hover { border-color:#60a5fa; }
 
 .sy-pl-menu { position:fixed; z-index:10001; min-width:120px; padding:4px; border-radius:6px;
   background:var(--comfy-menu-bg, #2b2b2b); border:1px solid var(--border-color, #555);
@@ -313,7 +311,6 @@ function createPromptListWidget(node, inputName) {
     function render() {
         list.replaceChildren();
         const n = state.items.length;
-        root.classList.toggle("mode-fixed", state.mode !== "randomize"); // fixed면 체크 흐리게
         checkAll.disabled = n === 0 || state.items.every((x) => x.pick);
         uncheckAll.disabled = n === 0 || !state.items.some((x) => x.pick);
 
