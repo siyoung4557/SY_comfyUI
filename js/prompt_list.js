@@ -42,7 +42,13 @@ const CSS = `
   cursor:pointer; border-radius:4px; font-size:16px; line-height:1; }
 .sy-pl-kebab:hover { background:rgba(255,255,255,.1); }
 .sy-pl-body { flex:1; min-height:0; overflow-y:auto; padding:6px 8px; white-space:pre-wrap; word-break:break-word; opacity:.9; }
-.sy-pl-add { flex:0 0 auto; width:100%; box-sizing:border-box; padding:6px; cursor:pointer; border-radius:6px; color:inherit;
+.sy-pl-addrow { flex:0 0 auto; display:flex; gap:6px; width:100%; }
+.sy-pl-bulk { flex:0 0 auto; padding:6px 10px; cursor:pointer; border-radius:6px; color:inherit; font-size:12px;
+  background:var(--comfy-input-bg, #222); border:1px solid var(--border-color, #555); white-space:nowrap; }
+.sy-pl-bulk:hover { border-color:#3b82f6; }
+.sy-pl-bulk:disabled { opacity:.35; cursor:default; border-color:var(--border-color, #555); }
+.sy-pl-root.mode-fixed .sy-pl-bulk:not(:disabled) { opacity:.5; }
+.sy-pl-add { flex:1 1 auto; min-width:0; box-sizing:border-box; padding:6px; cursor:pointer; border-radius:6px; color:inherit;
   background:var(--comfy-input-bg, #222); border:1px dashed var(--border-color, #555); }
 .sy-pl-add:hover { border-color:#3b82f6; }
 
@@ -261,7 +267,14 @@ function createPromptListWidget(node, inputName) {
     const root = el("div", "sy-pl-root");
     const list = el("div", "sy-pl-list");
     const addBtn = el("button", "sy-pl-add", "+ Add Prompt");
-    root.append(list, addBtn);
+    // + Add Prompt 옆: 랜덤 후보 전체 체크 / 전체 해제
+    const checkAll = el("button", "sy-pl-bulk", "☑ All");
+    checkAll.title = "Check all (random pool)";
+    const uncheckAll = el("button", "sy-pl-bulk", "☐ None");
+    uncheckAll.title = "Uncheck all (random pool)";
+    const addRow = el("div", "sy-pl-addrow");
+    addRow.append(addBtn, checkAll, uncheckAll);
+    root.append(list, addRow);
     keepWheelInside(root);
     root.addEventListener("keydown", (e) => e.stopPropagation());
 
@@ -301,6 +314,8 @@ function createPromptListWidget(node, inputName) {
         list.replaceChildren();
         const n = state.items.length;
         root.classList.toggle("mode-fixed", state.mode !== "randomize"); // fixed면 체크 흐리게
+        checkAll.disabled = n === 0 || state.items.every((x) => x.pick);
+        uncheckAll.disabled = n === 0 || !state.items.some((x) => x.pick);
 
         if (n === 0) {
             list.appendChild(el("div", "sy-pl-empty", "아직 프롬프트가 없습니다.\n아래 + Add Prompt를 눌러 추가하세요."));
@@ -377,6 +392,9 @@ function createPromptListWidget(node, inputName) {
         rafId = requestAnimationFrame(layout);
     });
     ro.observe(list);
+
+    checkAll.addEventListener("click", () => act(() => L.setAllPicks(state, true)));
+    uncheckAll.addEventListener("click", () => act(() => L.setAllPicks(state, false)));
 
     addBtn.addEventListener("click", () => openEditor({
         heading: "Add Prompt", title: "", prompt: "",

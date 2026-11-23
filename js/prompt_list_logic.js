@@ -87,6 +87,12 @@ export function togglePick(s, i) {
     return s;
 }
 
+// 랜덤 후보 체크 전체 켜기/끄기
+export function setAllPicks(s, value) {
+    for (const it of s.items) it.pick = !!value;
+    return s;
+}
+
 // 높이 나누기: 내용이 짧은 세트는 필요한 만큼만, 남은 공간은 내용이 긴 세트들이 똑같이 나눠 가짐
 // natural: 각 세트가 내용을 다 보여줄 때의 높이, total: 쓸 수 있는 전체 높이, minH: 긴 세트의 최소 높이
 export function allocateHeights(natural, total, minH = 72) {
