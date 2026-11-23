@@ -24,6 +24,14 @@ const CSS = `
 .sy-pl-radio { margin:0; cursor:pointer; accent-color:#3b82f6; }
 .sy-pl-num { font-size:10px; opacity:.7; font-variant-numeric:tabular-nums; }
 .sy-pl-item.selected .sy-pl-num { color:#3b82f6; opacity:1; font-weight:bold; }
+/* 랜덤 후보 체크 (randomize 모드에서만 의미 있음 → fixed일 때는 흐리게) */
+.sy-pl-pick { width:14px; height:14px; margin-top:4px; padding:0; box-sizing:border-box; cursor:pointer;
+  border-radius:4px; border:1.5px solid var(--border-color, #666); background:transparent;
+  color:#fff; font-size:10px; line-height:11px; font-weight:bold; text-align:center; }
+.sy-pl-pick:hover { border-color:#3b82f6; }
+.sy-pl-pick.on { background:#3b82f6; border-color:#3b82f6; }
+.sy-pl-root.mode-fixed .sy-pl-pick { opacity:.3; }
+.sy-pl-root.mode-fixed .sy-pl-pick:hover { opacity:.6; }
 .sy-pl-card { flex:1; min-width:0; display:flex; flex-direction:column;
   background:var(--comfy-input-bg, #222); border:1px solid var(--border-color, #444); border-radius:6px; }
 .sy-pl-item.selected .sy-pl-card { border-color:#3b82f6; box-shadow:0 0 0 1px #3b82f6 inset; }
@@ -292,6 +300,7 @@ function createPromptListWidget(node, inputName) {
     function render() {
         list.replaceChildren();
         const n = state.items.length;
+        root.classList.toggle("mode-fixed", state.mode !== "randomize"); // fixed면 체크 흐리게
 
         if (n === 0) {
             list.appendChild(el("div", "sy-pl-empty", "아직 프롬프트가 없습니다.\n아래 + Add Prompt를 눌러 추가하세요."));
@@ -308,7 +317,10 @@ function createPromptListWidget(node, inputName) {
             radio.checked = i === state.index;
             radio.addEventListener("change", () => act(() => L.select(state, i, true)));
             const num = el("div", "sy-pl-num", String(i).padStart(2, "0"));
-            side.append(radio, num);
+            const pick = el("button", "sy-pl-pick" + (it.pick ? " on" : ""), it.pick ? "✓" : "");
+            pick.title = "Random pool (randomize only)";
+            pick.addEventListener("click", (e) => { e.stopPropagation(); act(() => L.togglePick(state, i)); });
+            side.append(radio, num, pick);
 
             const card = el("div", "sy-pl-card");
             const head = el("div", "sy-pl-head");

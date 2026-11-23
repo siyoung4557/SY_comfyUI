@@ -14,7 +14,7 @@ export function normalize(raw) {
     if (!d || typeof d !== "object") d = {};
     const items = Array.isArray(d.items)
         ? d.items.filter((x) => x && typeof x === "object")
-                 .map((x) => ({ title: String(x.title ?? ""), prompt: String(x.prompt ?? "") }))
+                 .map((x) => ({ title: String(x.title ?? ""), prompt: String(x.prompt ?? ""), pick: x.pick === true }))
         : [];
     const mode = d.mode === "randomize" ? "randomize" : "fixed";
     const s = { items, index: Number.parseInt(d.index, 10) || 0, mode };
@@ -35,14 +35,14 @@ export function autoTitle(title, position) {
 
 export function addItem(s, title, prompt) {
     const pos = s.items.length;
-    s.items.push({ title: autoTitle(title, pos), prompt: prompt ?? "" });
+    s.items.push({ title: autoTitle(title, pos), prompt: prompt ?? "", pick: false });
     if (s.items.length === 1) s.index = 0;
     return s;
 }
 
 export function editItem(s, i, title, prompt) {
     if (i < 0 || i >= s.items.length) return s;
-    s.items[i] = { title: autoTitle(title, i), prompt: prompt ?? "" };
+    s.items[i] = { ...s.items[i], title: autoTitle(title, i), prompt: prompt ?? "" }; // 체크(pick)는 유지
     return s;
 }
 
@@ -76,8 +76,15 @@ export function select(s, i, fromRadio = false) {
 // 가져오기: 목록을 통째로 교체하고 0번 선택 (mode는 그대로 유지)
 export function replaceAll(s, items) {
     const n = normalize({ items, index: 0, mode: s.mode });
-    n.items = n.items.map((it, i) => ({ title: autoTitle(it.title, i), prompt: it.prompt }));
+    n.items = n.items.map((it, i) => ({ title: autoTitle(it.title, i), prompt: it.prompt, pick: false })); // 체크는 모두 해제
     return n;
+}
+
+// 랜덤 후보 체크 켜기/끄기 (randomize 모드에서만 의미 있음)
+export function togglePick(s, i) {
+    if (i < 0 || i >= s.items.length) return s;
+    s.items[i].pick = !s.items[i].pick;
+    return s;
 }
 
 // 높이 나누기: 내용이 짧은 세트는 필요한 만큼만, 남은 공간은 내용이 긴 세트들이 똑같이 나눠 가짐

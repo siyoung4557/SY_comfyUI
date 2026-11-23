@@ -29,6 +29,7 @@ def parse_data(prompt_data):
             items.append({
                 "title": str(it.get("title", "")),
                 "prompt": str(it.get("prompt", "")),
+                "pick": it.get("pick") is True,
             })
 
     try:
@@ -112,7 +113,11 @@ def pick(items, index, mode, rng=random):
     if not items:
         return -1
     if mode == "randomize":
-        return rng.randrange(len(items))
+        # 체크된 세트가 있으면 그중에서, 없으면 전체에서 무작위
+        pool = [i for i, it in enumerate(items) if it.get("pick")]
+        if not pool:
+            pool = list(range(len(items)))
+        return rng.choice(pool)
     return max(0, min(index, len(items) - 1))
 
 
