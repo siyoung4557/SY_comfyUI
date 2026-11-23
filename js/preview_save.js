@@ -28,12 +28,39 @@ function getButtonRect(node) {
 }
 
 // 지금 노드에 표시 중인 이미지 정보 가져오기
-function getCurrentImageInfo(node) {
-    const list = node.__saveImages;
-    if (!list || list.length === 0) return null;
+// ComfyUI는 탭 전환·새로고침·다른 탭에서 생성 등의 경우 "실행 완료" 알림 없이
+// 예전 결과를 다시 띄우기 때문에, 여러 곳을 순서대로 확인합니다.
+//  1) ComfyUI가 보관 중인 이 노드의 최신 출력
+//  2) 실행 완료 때 기억해 둔 목록
+//  3) 노드에 붙어 있는 출력 목록
+//  4) 화면에 실제로 그려진 이미지 주소
+// 결과: { filename, subfolder, type } 또는 { url } 또는 null
+function pickIndex(node, length) {
     let idx = typeof node.imageIndex === "number" ? node.imageIndex : 0;
-    if (idx < 0 || idx >= list.length) idx = 0;
-    return list[idx];
+    if (idx < 0 || idx >= length) idx = 0;
+    return idx;
+}
+
+function getCurrentImageInfo(node) {
+    const lists = [];
+    try {
+        const out = app.nodeOutputs?.[String(node.id)];
+        if (out?.images?.length) lists.push(out.images);
+    } catch { /* 이전 버전 ComfyUI */ }
+    if (node.__saveImages?.length) lists.push(node.__saveImages);
+    if (Array.isArray(node.images) && node.images.length) lists.push(node.images);
+
+    for (const list of lists) {
+        const it = list[pickIndex(node, list.length)];
+        if (it && it.filename) return it;
+    }
+
+    const imgs = node.imgs;
+    if (Array.isArray(imgs) && imgs.length) {
+        const src = imgs[pickIndex(node, imgs.length)]?.src;
+        if (src && !src.startsWith("data:,")) return { url: src };
+    }
+    return null;
 }
 
 function makeSuggestedName() {
@@ -103,6 +130,11 @@ async function openSavePicker(suggestedName) {
 // ─────────────────────────────────────────────────────────
 
 async function fetchImageBlob(info) {
+    if (info.url) {   // 화면에 그려진 이미지 주소에서 바로 가져오기
+        const res = await fetch(info.url);
+        if (!res.ok) throw new Error(`이미지를 불러오지 못했습니다 (HTTP ${res.status})`);
+        return await res.blob();
+    }
     const params = new URLSearchParams({
         filename: info.filename,
         subfolder: info.subfolder || "",
