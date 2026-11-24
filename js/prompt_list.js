@@ -77,6 +77,24 @@ const CSS = `
   max-width:96vw; max-height:96vh; }
 .sy-pl-dialog.resizable textarea { flex:1 1 220px; min-height:120px; resize:none; }
 .sy-pl-hit { color:#60a5fa; font-weight:bold; }
+/* 수정 창 Prompt 안 검색 표시: 입력칸 뒤에 같은 글자를 겹쳐 그리고, 일치 부분만 파란색 */
+.sy-pl-hlwrap { position:relative; display:flex; flex:1 1 220px; min-height:120px; }
+.sy-pl-hlwrap textarea { position:relative; z-index:1; flex:1 1 auto; min-height:0; height:auto; margin:0;
+  line-height:1.45; resize:none; }
+.sy-pl-hl { display:none; position:absolute; inset:0; z-index:0; margin:0; box-sizing:border-box; pointer-events:none;
+  padding:8px; border:1px solid transparent; border-radius:6px; overflow-y:scroll; overflow-x:hidden;
+  white-space:pre-wrap; overflow-wrap:break-word; word-wrap:break-word; line-height:1.45;
+  font-family:inherit; font-size:13px; color:var(--input-text, #ddd); background:var(--comfy-input-bg, #1e1e1e); }
+.sy-pl-hl .sy-pl-hit { font-weight:inherit; color:#60a5fa; background:rgba(96,165,250,.22); border-radius:2px; }
+.sy-pl-hlwrap.on .sy-pl-hl { display:block; }
+.sy-pl-hlwrap.on textarea { color:transparent; caret-color:var(--input-text, #ddd); background:transparent; overflow-y:scroll; }
+.sy-pl-dsearch { border:none; background:transparent; color:inherit; cursor:pointer; width:28px; height:26px;
+  border-radius:6px; display:flex; align-items:center; justify-content:center; margin-right:4px; }
+.sy-pl-dsearch:hover { background:rgba(255,255,255,.1); }
+.sy-pl-dsearch.on { background:#3b82f6; color:#fff; }
+.sy-pl-toast { position:fixed; left:50%; bottom:40px; transform:translateX(-50%); z-index:10003; padding:8px 16px;
+  border-radius:8px; background:#111; color:#fff; border:1px solid #3b82f6; font:13px sans-serif;
+  box-shadow:0 6px 20px rgba(0,0,0,.4); pointer-events:none; }
 .sy-pl-search-row { display:flex; gap:8px; }
 .sy-pl-foot { display:flex; justify-content:flex-end; gap:8px; }
 .sy-pl-btn { padding:7px 16px; border-radius:6px; cursor:pointer; color:inherit;
@@ -167,6 +185,32 @@ function openDialog({ title, small, resizable }) {
     return { box, close };
 }
 
+function showToast(text) {
+    const t = el("div", "sy-pl-toast", text);
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1500);
+}
+
+// 클립보드 복사 (localhost가 아니면 막힐 수 있어서 예비 방식도 사용)
+async function copyText(text) {
+    try {
+        await navigator.clipboard.writeText(text);
+        return true;
+    } catch {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0;";
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand("copy"); } catch { ok = false; }
+        ta.remove();
+        return ok;
+    }
+}
+
+const SEARCH_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>';
+
 // Add / Edit 창: 처음 값에서 하나라도 바뀌면 Save 활성화
 function openEditor({ heading, title, prompt, onSave }) {
     const { box, close } = openDialog({ title: heading, resizable: true });
@@ -180,9 +224,32 @@ function openEditor({ heading, title, prompt, onSave }) {
     box.appendChild(ti);
 
     box.appendChild(el("label", "", "Prompt"));
+    const wrap = el("div", "sy-pl-hlwrap");
+    const hl = el("div", "sy-pl-hl");          // 뒤에 깔리는 표시용 글자
     const pa = el("textarea");
     pa.value = origPrompt;
-    box.appendChild(pa);
+    pa.spellcheck = false;
+    wrap.append(hl, pa);
+    box.appendChild(wrap);
+
+    // Prompt 안 검색 (창을 닫으면 사라짐)
+    let term = "";
+    const head = box.querySelector(".sy-pl-dhead");
+    const sbtn = el("button", "sy-pl-dsearch");
+    sbtn.innerHTML = SEARCH_SVG;
+    sbtn.title = "Search in prompt";
+    head.insertBefore(sbtn, head.querySelector(".sy-pl-x"));
+    const paintHL = () => {
+        wrap.classList.toggle("on", term.length > 0);
+        sbtn.classList.toggle("on", term.length > 0);
+        if (!term) { hl.replaceChildren(); return; }
+        fillHighlighted(hl, pa.value + "\n", term);   // 마지막 줄바꿈 높이까지 맞춤
+        hl.scrollTop = pa.scrollTop;
+    };
+    pa.addEventListener("input", paintHL);
+    pa.addEventListener("scroll", () => { hl.scrollTop = pa.scrollTop; });
+    new ResizeObserver(() => { if (term) paintHL(); }).observe(pa);
+    sbtn.addEventListener("click", () => openSearch(term, (t) => { term = t; paintHL(); pa.focus(); }));
 
     const foot = el("div", "sy-pl-foot");
     const cancel = el("button", "sy-pl-btn", "Cancel");
@@ -343,7 +410,10 @@ function createPromptListWidget(node, inputName) {
             kebab.title = "Menu";
             kebab.addEventListener("click", (e) => {
                 e.stopPropagation();
-                const entries = [{ label: "Edit", action: () => openEditor({
+                const entries = [{ label: "Copy Prompt", action: async () => {
+                    const ok = await copyText(it.prompt);
+                    showToast(ok ? "Copied" : "Copy failed");
+                } }, { label: "Edit", action: () => openEditor({
                     heading: "Edit Prompt", title: it.title, prompt: it.prompt,
                     onSave: (t, p) => act(() => L.editItem(state, i, t, p)),
                 }) }];
