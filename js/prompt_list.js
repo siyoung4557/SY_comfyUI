@@ -58,13 +58,17 @@ const CSS = `
 .sy-pl-menu button:hover { background:rgba(255,255,255,.1); }
 .sy-pl-menu button.danger { color:#f87171; }
 
-.sy-pl-overlay { position:fixed; inset:0; z-index:10002; background:rgba(0,0,0,.5);
+.sy-pl-overlay { position:fixed; inset:0; z-index:10004; background:rgba(0,0,0,.5);
   display:flex; align-items:center; justify-content:center; font-family:sans-serif; }
 .sy-pl-dialog { width:min(560px, 92vw); max-height:88vh; display:flex; flex-direction:column; gap:10px;
   padding:16px; border-radius:10px; background:var(--comfy-menu-bg, #2b2b2b); color:var(--fg-color, #ddd);
   border:1px solid var(--border-color, #555); box-shadow:0 10px 40px rgba(0,0,0,.5); font-size:13px; }
 .sy-pl-dialog.small { width:min(340px, 92vw); }
 .sy-pl-dhead { display:flex; align-items:center; }
+/* 떠 있는 창 (Add/Edit): 배경을 막지 않음, 제목줄을 끌어 이동, 항상 위 */
+.sy-pl-dialog.floating { position:fixed; z-index:10003; margin:0; font-family:sans-serif; }
+.sy-pl-dialog.floating .sy-pl-dhead { cursor:move; user-select:none; margin:-6px -6px 0; padding:6px 6px 0; }
+.sy-pl-dialog.floating .sy-pl-dhead button { cursor:pointer; }
 .sy-pl-dhead h3 { flex:1; margin:0; font-size:15px; }
 .sy-pl-x { border:none; background:transparent; color:inherit; font-size:18px; cursor:pointer; }
 .sy-pl-dialog label { opacity:.75; font-size:12px; }
@@ -211,9 +215,70 @@ async function copyText(text) {
 
 const SEARCH_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>';
 
+// 떠 있는 창: 배경(캔버스)을 막지 않고, 제목줄을 끌어 옮길 수 있음
+function openFloating({ title }) {
+    const box = el("div", "sy-pl-dialog resizable floating");
+    const head = el("div", "sy-pl-dhead");
+    head.appendChild(el("h3", "", title));
+    const x = el("button", "sy-pl-x", "✕");
+    head.appendChild(x);
+    box.appendChild(head);
+    document.body.appendChild(box);
+
+    // 처음 위치: 화면 가운데
+    const r = box.getBoundingClientRect();
+    box.style.left = Math.max(8, Math.round((window.innerWidth - r.width) / 2)) + "px";
+    box.style.top = Math.max(8, Math.round((window.innerHeight - r.height) / 2)) + "px";
+
+    // 제목줄 끌어서 이동 (버튼 위에서는 이동하지 않음)
+    head.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0 || e.target.closest("button")) return;
+        e.preventDefault();
+        const startX = e.clientX, startY = e.clientY;
+        const b = box.getBoundingClientRect();
+        const move = (ev) => {
+            const w = box.offsetWidth, h = box.offsetHeight;
+            const nx = Math.min(Math.max(b.left + ev.clientX - startX, 40 - w), window.innerWidth - 40);
+            const ny = Math.min(Math.max(b.top + ev.clientY - startY, 0), window.innerHeight - 30);
+            box.style.left = nx + "px";
+            box.style.top = ny + "px";
+        };
+        const up = () => {
+            window.removeEventListener("pointermove", move);
+            window.removeEventListener("pointerup", up);
+        };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up);
+    });
+
+    const close = () => box.remove();
+    x.addEventListener("click", close);
+    // 창 안에서 누른 키는 ComfyUI 단축키로 넘어가지 않게 (창 밖은 평소대로)
+    box.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Escape") close();
+    });
+    box.addEventListener("keyup", (e) => e.stopPropagation());
+    return { box, close };
+}
+
+// Add / Edit 창은 한 번에 하나만
+let openEditorWin = null;
+
 // Add / Edit 창: 처음 값에서 하나라도 바뀌면 Save 활성화
 function openEditor({ heading, title, prompt, onSave }) {
-    const { box, close } = openDialog({ title: heading, resizable: true });
+    if (openEditorWin && document.body.contains(openEditorWin.box)) {
+        if (openEditorWin.isDirty()) {
+            // 고치던 내용이 있으면 그 창을 지키고 알려줌
+            openEditorWin.box.animate?.([{ transform: "translateX(-6px)" }, { transform: "translateX(6px)" }, { transform: "none" }], { duration: 200 });
+            showToast("Save or cancel the open window first.");
+            return;
+        }
+        openEditorWin.close();   // 바뀐 게 없으면 새 창으로 바꿈
+    }
+    const { box, close: closeBox } = openFloating({ title: heading });
+    const close = () => { closeBox(); if (openEditorWin?.box === box) openEditorWin = null; };
+    box.querySelector(".sy-pl-x").addEventListener("click", close);
     const origTitle = title ?? "", origPrompt = prompt ?? "";
 
     box.appendChild(el("label", "", "Title"));
@@ -268,6 +333,11 @@ function openEditor({ heading, title, prompt, onSave }) {
         onSave(ti.value, pa.value);
         close();
     });
+    openEditorWin = { box, close, isDirty: () => !save.disabled };
+    // 창 위치를 다시 가운데로 (내용이 다 들어간 뒤 크기 기준)
+    const r = box.getBoundingClientRect();
+    box.style.left = Math.max(8, Math.round((window.innerWidth - r.width) / 2)) + "px";
+    box.style.top = Math.max(8, Math.round((window.innerHeight - r.height) / 2)) + "px";
     setTimeout(() => (origTitle ? pa : ti).focus(), 0);
 }
 
