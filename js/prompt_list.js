@@ -66,7 +66,8 @@ const CSS = `
 .sy-pl-dialog.small { width:min(340px, 92vw); }
 .sy-pl-dhead { display:flex; align-items:center; }
 /* 떠 있는 창 (Add/Edit): 배경을 막지 않음, 제목줄을 끌어 이동, 항상 위 */
-.sy-pl-dialog.floating { position:fixed; z-index:10003; margin:0; font-family:sans-serif; }
+.sy-pl-floatwrap { position:fixed; left:0; top:0; z-index:10003; }
+.sy-pl-dialog.floating { position:relative; margin:0; font-family:sans-serif; }
 .sy-pl-dialog.floating .sy-pl-dhead { cursor:move; user-select:none; margin:-6px -6px 0; padding:6px 6px 0; }
 .sy-pl-dialog.floating .sy-pl-dhead button { cursor:pointer; }
 .sy-pl-dhead h3 { flex:1; margin:0; font-size:15px; }
@@ -216,33 +217,67 @@ async function copyText(text) {
 const SEARCH_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>';
 
 // 떠 있는 창: 배경(캔버스)을 막지 않고, 제목줄을 끌어 옮길 수 있음
+// 캔버스를 마우스 휠로 확대하면 창도 같이 커짐 (기본 크기보다 작아지지는 않고, 화면보다 커지지도 않음)
+const MAX_ZOOM = 3;
+
+function canvasScale() {
+    const sc = app.canvas?.ds?.scale;
+    return typeof sc === "number" && sc > 0 ? sc : 1;
+}
+
 function openFloating({ title }) {
+    // wrap: 화면 위치 담당 (확대 안 함) / box: 실제 창 (확대 적용)
+    const wrap = el("div", "sy-pl-floatwrap");
     const box = el("div", "sy-pl-dialog resizable floating");
     const head = el("div", "sy-pl-dhead");
     head.appendChild(el("h3", "", title));
     const x = el("button", "sy-pl-x", "✕");
     head.appendChild(x);
     box.appendChild(head);
-    document.body.appendChild(box);
+    wrap.appendChild(box);
+    document.body.appendChild(wrap);
 
-    // 처음 위치: 화면 가운데
-    const r = box.getBoundingClientRect();
-    box.style.left = Math.max(8, Math.round((window.innerWidth - r.width) / 2)) + "px";
-    box.style.top = Math.max(8, Math.round((window.innerHeight - r.height) / 2)) + "px";
+    const place = (left, top) => {
+        const r = box.getBoundingClientRect();
+        const nx = Math.min(Math.max(left, 40 - r.width), window.innerWidth - 40);
+        const ny = Math.min(Math.max(top, 0), window.innerHeight - 30);
+        wrap.style.left = nx + "px";
+        wrap.style.top = ny + "px";
+    };
+    const center = () => {
+        const r = box.getBoundingClientRect();
+        place(Math.max(8, Math.round((window.innerWidth - r.width) / 2)),
+              Math.max(8, Math.round((window.innerHeight - r.height) / 2)));
+    };
+
+    // ── 캔버스 확대 따라가기 ──
+    let zoom = 1, raf = 0;
+    const applyZoom = () => {
+        const before = box.getBoundingClientRect();                  // 지금 보이는 크기
+        const cx = before.left + before.width / 2, cy = before.top + before.height / 2;
+        const natW = before.width / zoom, natH = before.height / zoom; // 확대 전 크기
+        const fit = Math.min(window.innerWidth / (natW + 16), window.innerHeight / (natH + 16));
+        const z = Math.max(1, Math.min(canvasScale(), MAX_ZOOM, fit));
+        if (Math.abs(z - zoom) < 0.01) return;
+        zoom = z;
+        box.style.zoom = String(z);
+        const after = box.getBoundingClientRect();
+        place(cx - after.width / 2, cy - after.height / 2);           // 창 가운데 기준으로 커짐
+    };
+    let lastScale = null;
+    const loop = () => {
+        const sc = canvasScale();
+        if (sc !== lastScale) { lastScale = sc; applyZoom(); }
+        raf = requestAnimationFrame(loop);
+    };
 
     // 제목줄 끌어서 이동 (버튼 위에서는 이동하지 않음)
     head.addEventListener("pointerdown", (e) => {
         if (e.button !== 0 || e.target.closest("button")) return;
         e.preventDefault();
         const startX = e.clientX, startY = e.clientY;
-        const b = box.getBoundingClientRect();
-        const move = (ev) => {
-            const w = box.offsetWidth, h = box.offsetHeight;
-            const nx = Math.min(Math.max(b.left + ev.clientX - startX, 40 - w), window.innerWidth - 40);
-            const ny = Math.min(Math.max(b.top + ev.clientY - startY, 0), window.innerHeight - 30);
-            box.style.left = nx + "px";
-            box.style.top = ny + "px";
-        };
+        const l0 = parseFloat(wrap.style.left) || 0, t0 = parseFloat(wrap.style.top) || 0;
+        const move = (ev) => place(l0 + ev.clientX - startX, t0 + ev.clientY - startY);
         const up = () => {
             window.removeEventListener("pointermove", move);
             window.removeEventListener("pointerup", up);
@@ -251,7 +286,7 @@ function openFloating({ title }) {
         window.addEventListener("pointerup", up);
     });
 
-    const close = () => box.remove();
+    const close = () => { cancelAnimationFrame(raf); wrap.remove(); };
     x.addEventListener("click", close);
     // 창 안에서 누른 키는 ComfyUI 단축키로 넘어가지 않게 (창 밖은 평소대로)
     box.addEventListener("keydown", (e) => {
@@ -259,7 +294,11 @@ function openFloating({ title }) {
         if (e.key === "Escape") close();
     });
     box.addEventListener("keyup", (e) => e.stopPropagation());
-    return { box, close };
+
+    center();
+    // 확대 따라가기는 내용이 다 들어간 뒤 시작
+    const start = () => { center(); lastScale = null; loop(); };
+    return { box, close, start };
 }
 
 // Add / Edit 창은 한 번에 하나만
@@ -276,7 +315,7 @@ function openEditor({ heading, title, prompt, onSave }) {
         }
         openEditorWin.close();   // 바뀐 게 없으면 새 창으로 바꿈
     }
-    const { box, close: closeBox } = openFloating({ title: heading });
+    const { box, close: closeBox, start } = openFloating({ title: heading });
     const close = () => { closeBox(); if (openEditorWin?.box === box) openEditorWin = null; };
     box.querySelector(".sy-pl-x").addEventListener("click", close);
     const origTitle = title ?? "", origPrompt = prompt ?? "";
@@ -334,10 +373,7 @@ function openEditor({ heading, title, prompt, onSave }) {
         close();
     });
     openEditorWin = { box, close, isDirty: () => !save.disabled };
-    // 창 위치를 다시 가운데로 (내용이 다 들어간 뒤 크기 기준)
-    const r = box.getBoundingClientRect();
-    box.style.left = Math.max(8, Math.round((window.innerWidth - r.width) / 2)) + "px";
-    box.style.top = Math.max(8, Math.round((window.innerHeight - r.height) / 2)) + "px";
+    start();   // 가운데 배치 + 캔버스 확대 따라가기 시작
     setTimeout(() => (origTitle ? pa : ti).focus(), 0);
 }
 
